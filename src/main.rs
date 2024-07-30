@@ -18,10 +18,7 @@ fn main() {
     );
 
     if args().len() <= 1 {
-        println!(
-            "{}: no source file provided.\n",
-            colored("error", Color::Red)
-        );
+        log_error!("no source file provided.\n");
         std::process::exit(-1);
     }
 
@@ -29,18 +26,13 @@ fn main() {
     let code = match std::fs::read_to_string(args().collect::<Vec<_>>()[1].clone()) {
         Ok(v) => v,
         Err(e) => {
-            println!("{}: {e}.\n", colored("error", Color::Red));
+            log_error!("{e}.\n");
             std::process::exit(-1);
         }
     };
 
-    warning!("test");
-
     // tokenize the user generated code.
     let tokens = lexer::Lexer::new(&code).tokenize();
 
-    println!(
-        "{}: finished compilation.\n",
-        colored("success", Color::Green)
-    );
+    log_success!("finished compilation.\n");
 }
