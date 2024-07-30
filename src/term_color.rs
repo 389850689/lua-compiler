@@ -24,3 +24,33 @@ pub fn colored(string: &str, color: Color) -> String {
     // put the string inbetween the left and right hand side.
     format!("{lhs}{string}{rhs}")
 }
+
+#[macro_export]
+macro_rules! log_warn {
+    ($($args:tt)*) => {
+        // format the string with var args.
+        let string = std::fmt::format(format_args!($($args)*));
+        // color the string according to the macro.
+        println!("{}: {string}", colored("warning", Color::Yellow));
+    }
+}
+
+#[macro_export]
+macro_rules! log_error {
+    ($($args:tt)*) => {
+        // format the string with var args.
+        let string = std::fmt::format(format_args!($($args)*));
+        // color the string according to the macro.
+        println!("{}: {string}", colored("error", Color::Red));
+    }
+}
+
+#[macro_export]
+macro_rules! log_success {
+    ($($args:tt)*) => {
+        // format the string with var args.
+        let string = std::fmt::format(format_args!($($args)*));
+        // color the string according to the macro.
+        println!("{}: {string}", colored("success", Color::Green));
+    }
+}
