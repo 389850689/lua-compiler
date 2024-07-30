@@ -3,6 +3,7 @@ pub enum Color {
     Red,
     Yellow,
     Blue,
+    Grey,
 }
 
 /// Given a string, print a colored version of it to the console.
@@ -15,6 +16,7 @@ pub fn colored(string: &str, color: Color) -> String {
             Color::Yellow => 93,
             Color::Blue => 94,
             Color::Red => 91,
+            Color::Grey => 90,
         }
     );
 

@@ -1,5 +1,19 @@
-/// Tokens are simply as list that contains one or more `Token`.
-pub type Tokens = Vec<Token>;
+use crate::{log_error, term_color::*};
+
+trait StrExt {
+    fn remove_last(&self) -> &str;
+}
+
+impl StrExt for str {
+    fn remove_last(&self) -> &str {
+        match self.char_indices().next_back() {
+            Some((i, _)) => &self[..i],
+            None => self,
+        }
+    }
+}
+
+type Tokens = Vec<Token>;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
@@ -25,7 +39,7 @@ pub enum Token {
     TRUE,
     UNTIL,
     WHILE,
-    Number(f64),
+    NUMBER(f64),
     ADD,
     SUBTRACT,
     MULTIPLY,
@@ -42,8 +56,8 @@ pub enum Token {
     LESS_EQUAL,
     CONCAT,
     DOTS,
-    STRING,
-    NAME,
+    STRING(String),
+    NAME(String),
     XOR,
     MODULO,
     HASHTAG,
@@ -57,16 +71,27 @@ pub enum Token {
     UNDEFINED,
 }
 
+fn is_end_of_line(c: char) -> bool {
+    match c {
+        '\n' => true,
+        _ => false,
+    }
+}
+
 /// This represents the state of our Lexer sa it's tokenizing the tape.
 pub struct Lexer {
     tape: String,
     cursor: isize,
+    line: usize,
+    errored: bool,
 }
 
 impl Lexer {
     pub fn new(text: &str) -> Self {
         // starting at negative index is a little bit of a hack to make the code be slightly nicer.
         Self {
+            line: 1,
+            errored: false,
             tape: text.to_string(),
             cursor: -1,
         }
@@ -75,6 +100,11 @@ impl Lexer {
     /// This will return true if the cursor is past the last character of the tape.
     fn is_end_of_file(&self) -> bool {
         self.cursor as usize >= self.tape.len()
+    }
+
+    /// This will return true if n is past the last character of the tape.
+    fn is_end_of_file_nth(&self, n: isize) -> bool {
+        n as usize >= self.tape.len()
     }
 
     /// Advances the cursor by one then returns the consumed character.
@@ -91,9 +121,48 @@ impl Lexer {
         Some(self.tape.chars().nth(self.cursor as _).unwrap())
     }
 
+    fn advance_nth(&mut self, n: isize) -> Option<char> {
+        for _ in 0..n {
+            self.advance();
+        }
+        None
+    }
+
     /// This checks the next character in the tape but doesn't consume it.
     fn peek(&self) -> Option<char> {
         self.tape.chars().nth(self.cursor as usize + 1)
+    }
+
+    /// This checks an arbitrary character in the tape but doesn't consume it.
+    fn peek_nth(&self, n: isize) -> Option<char> {
+        self.tape.chars().nth(self.cursor as usize + n as usize)
+    }
+
+    /// This will continue peaking until it can no longer peak.
+    fn while_peek<F: Fn(char) -> bool, P: Fn(char) -> bool>(&self, p: P, f: F) -> (isize, String) {
+        let mut stack: String = String::new();
+        let mut current_peek = 1;
+        loop {
+            // if there isn't a next character just return from the peek.
+            let current_char = match self.peek_nth(current_peek) {
+                Some(c) => c,
+                None => break,
+            };
+
+            // push the newest character to thet stack.
+            stack.push(current_char);
+
+            if p(current_char) {
+                break;
+            }
+
+            if !f(current_char) {
+                break;
+            };
+
+            current_peek += 1;
+        }
+        (current_peek, stack)
     }
 
     /// Returns the char the cursor is currently pointing over
@@ -103,7 +172,7 @@ impl Lexer {
     // }
 
     /// This transforms a string into a list of parsable tokens.
-    pub fn tokenize(&mut self) -> Tokens {
+    pub fn tokenize(&mut self) -> Option<Tokens> {
         // store a list of tokens that we've found while lexing.
         let mut tokens: Tokens = Vec::new();
 
@@ -111,6 +180,34 @@ impl Lexer {
         while let Some(c) = self.advance() {
             // ignore characters that don't care about.
             if c.is_whitespace() {
+                continue;
+            }
+
+            if is_end_of_line(c) {
+                self.line += 1;
+                continue;
+            }
+
+            if c == '"' || c == '\'' {
+                // collect the stack of chars into a string.
+                let (n, string) =
+                    self.while_peek(|c| is_end_of_line(c), |c| !(c == '"' || c == '\''));
+
+                if self.is_end_of_file_nth(self.cursor + n)
+                    || is_end_of_line(string.chars().last().unwrap_or('\0'))
+                {
+                    log_error!(
+                        "[{}] unclosed string, starting at {}.",
+                        colored("token", Color::Grey),
+                        self.cursor
+                    );
+                    self.errored = true;
+                } else {
+                    let string = &string[..].remove_last();
+                    println!("FOUND: {string:?}");
+                }
+
+                self.advance_nth(n);
                 continue;
             }
 
@@ -133,12 +230,13 @@ impl Lexer {
                 }
                 // count the number of points in a number.
                 if buffer.chars().filter(|&p| p == '.').count() > 1 {
-                    panic!("Error: invalid number at column {}.", self.cursor - 1);
+                    log_error!("invalid number at column {}.", self.cursor - 1);
+                    std::process::exit(-1);
                 }
                 // turn the string into a number.
                 let number = buffer.parse::<f64>().unwrap();
                 // add the number to the tokens list.
-                tokens.push(Token::Number(number));
+                tokens.push(Token::NUMBER(number));
                 continue;
             }
 
@@ -149,17 +247,41 @@ impl Lexer {
                 '/' => Token::DIVIDE,
                 '(' => Token::LEFT_PAREN,
                 ')' => Token::RIGHT_PAREN,
+                '^' => Token::XOR,
+                '.' => Token::DOT,
+                ',' => Token::COMMA,
+                '#' => Token::HASHTAG,
+                ';' => Token::SEMICOLON,
+                ':' => Token::COLON,
+                ']' => Token::LEFT_BRACKET,
+                '[' => Token::RIGHT_BRACKET,
+                '{' => Token::LEFT_BRACE,
+                '}' => Token::RIGHT_BRACE,
+                // '<' => Token::LESS_THAN,
+                // '>' => Token::GREATER_THAN,
+                '%' => Token::MODULO,
                 _ => Token::UNDEFINED,
             };
 
             if token == Token::UNDEFINED {
                 // show an error message to the user if we don't know what they input.
-                panic!("Error: undefined token '{c}' at column {}.", self.cursor);
+                log_error!(
+                    "[{}] undefined token '{c}' at column {}.",
+                    colored("token", Color::Grey),
+                    self.cursor
+                );
+                self.errored = true;
             }
 
             tokens.push(token)
         }
 
-        tokens
+        // if there was an error during lexing we still want to show all the error messages at
+        // once.
+        if self.errored {
+            return None;
+        }
+
+        Some(tokens)
     }
 }

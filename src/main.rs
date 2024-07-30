@@ -23,16 +23,17 @@ fn main() {
     }
 
     // attempt to read the lua file's bytes.
-    let code = match std::fs::read_to_string(args().collect::<Vec<_>>()[1].clone()) {
-        Ok(v) => v,
-        Err(e) => {
-            log_error!("{e}.\n");
-            std::process::exit(-1);
-        }
-    };
+    let code = std::fs::read_to_string(args().collect::<Vec<_>>()[1].clone()).unwrap_or_else(|e| {
+        log_error!("{e}.\n");
+        std::process::exit(-1);
+    });
 
     // tokenize the user generated code.
-    let tokens = lexer::Lexer::new(&code).tokenize();
+    let tokens = lexer::Lexer::new(&code).tokenize().unwrap_or_else(|| {
+        std::process::exit(-1);
+    });
+
+    log_success!("finished tokenization: {tokens:#?}.\n");
 
     log_success!("finished compilation.\n");
 }
