@@ -1,3 +1,4 @@
+-- factorial ahh program in lua.
 local function fact(n)
 	if n == 0 then
 		return 1
@@ -6,5 +7,6 @@ local function fact(n)
 	end
 end
 
+local n = 5
 print("factorial value:")
-print(fact(5))
+print(fact(n))

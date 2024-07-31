@@ -18,7 +18,7 @@ impl StrExt for str {
 type Tokens = Vec<Token>;
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     AND,
     END,
@@ -228,6 +228,14 @@ impl Lexer {
                 continue;
             }
 
+            // check if we're currently starting a comment.
+            if c == '-' && self.peek().unwrap_or_default() == '-' {
+                // read until the end of the line.
+                let (n, _) = self.while_peek(|c, _| is_end_of_line(c), |_| true);
+                self.advance_nth(n - 1);
+                continue;
+            }
+
             if c == '"' || c == '\'' {
                 // collect the stack of chars into a string.
                 let (mut n, string) = self.while_peek(
@@ -291,6 +299,28 @@ impl Lexer {
                 continue;
             }
 
+            // check to see if this is the start of an identifier.
+            if c.is_alphabetic() {
+                // read the rest of the identifier.
+                let (n, string) =
+                    self.while_peek(|c, _| is_end_of_line(c), |c| c.is_alphanumeric());
+
+                // complete the identifier.
+                let string = format!("{c}{}", &string[..].remove_last());
+
+                if let Some(token) = keywords.get(&*string) {
+                    tokens.push(token.clone());
+                } else {
+                    tokens.push(Token::NAME(string))
+                }
+
+                self.advance_nth(n - 1);
+                continue;
+            }
+
+            // we set this to a greater value if we match multicharacter tokens.
+            let mut skip_char = false;
+
             let token = match c {
                 '+' => Token::ADD,
                 '-' => Token::SUBTRACT,
@@ -311,6 +341,7 @@ impl Lexer {
                 '%' => Token::MODULO,
                 '<' => {
                     if self.peek().unwrap_or_default() == '=' {
+                        skip_char = true;
                         Token::LESS_EQUAL
                     } else {
                         Token::LESS_THAN
@@ -318,6 +349,7 @@ impl Lexer {
                 }
                 '>' => {
                     if self.peek().unwrap_or_default() == '=' {
+                        skip_char = true;
                         Token::GREATER_EQUAL
                     } else {
                         Token::GREATER_THAN
@@ -325,6 +357,7 @@ impl Lexer {
                 }
                 '~' => {
                     if self.peek().unwrap_or_default() == '=' {
+                        skip_char = true;
                         Token::NEQ
                     } else {
                         Token::UNDEFINED
@@ -332,6 +365,7 @@ impl Lexer {
                 }
                 '=' => {
                     if self.peek().unwrap_or_default() == '=' {
+                        skip_char = true;
                         Token::EQ
                     } else {
                         Token::ASSIGN
@@ -351,7 +385,11 @@ impl Lexer {
                 self.errored = true;
             }
 
-            tokens.push(token)
+            tokens.push(token);
+
+            if skip_char {
+                self.advance();
+            }
         }
 
         // if there was an error during lexing we still want to show all the error messages at
