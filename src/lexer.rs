@@ -236,6 +236,23 @@ impl Lexer {
                 continue;
             }
 
+            // we got uhhh multiline string here jit.
+            if c == '[' && self.peek().unwrap_or_default() == '[' {
+                // we can consume since we know what the next char is.
+                self.advance();
+
+                let (n, string) = self.while_peek(
+                    |c, n| c == ']' && self.peek_nth(n as isize + 1).unwrap_or_default() == ']',
+                    |_| true,
+                );
+
+                let string = &string[..].remove_last();
+                tokens.push(Token::STRING(string.to_string()));
+
+                self.advance_nth(n + 1);
+                continue;
+            }
+
             if c == '"' || c == '\'' {
                 // collect the stack of chars into a string.
                 let (mut n, string) = self.while_peek(
@@ -317,10 +334,10 @@ impl Lexer {
                 // read the rest of the number.
                 let (n, string) = self.while_peek(
                     |c, _| is_end_of_line(c),
-                    |c| c.is_numeric() || c == 'e' || c == '.' || c == '-',
+                    |c| c.is_numeric() || c == 'e' || c == '.' || c == '-' || c == '_',
                 );
 
-                let string = &string[..].remove_last();
+                let string = &string[..].remove_last().replace('_', "");
 
                 // if it's just a "modification" character move on dude, else parse.
                 if !((c == '-' || c == '.') && string.is_empty()) {
