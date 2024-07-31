@@ -86,6 +86,7 @@ pub struct Lexer {
     cursor: isize,
     line: usize,
     errored: bool,
+    column: usize,
 }
 
 impl Lexer {
@@ -93,6 +94,7 @@ impl Lexer {
         // starting at negative index is a little bit of a hack to make the code be slightly nicer.
         Self {
             line: 1,
+            column: 0,
             errored: false,
             tape: text.to_string(),
             cursor: -1,
@@ -113,6 +115,7 @@ impl Lexer {
     fn advance(&mut self) -> Option<char> {
         // increase our internal cursor by one.
         self.cursor = self.cursor + 1;
+        self.column += 1;
 
         if self.is_end_of_file() {
             // if we're at the end of the file we can't advance.
@@ -220,6 +223,8 @@ impl Lexer {
 
             if is_end_of_line(c) {
                 self.line += 1;
+                // reset the column at the start of a new line.
+                self.column = 0;
                 continue;
             }
 
@@ -230,7 +235,7 @@ impl Lexer {
                         self.sub_tape((self.cursor as usize + n) - 2, 3) != "\\\r\n"
                             && is_end_of_line(c)
                     },
-                    |c| !(c == '"'),
+                    |c| !(c == '"' || c == '\''),
                 );
 
                 // so this is a bool set if the peek is at the end of the line.
@@ -240,7 +245,7 @@ impl Lexer {
                     log_error!(
                         "[{}] unclosed string, starting at column {}, line {}.",
                         colored("token", Color::Grey),
-                        self.cursor,
+                        self.column,
                         self.line
                     );
                     self.errored = true;
@@ -303,9 +308,35 @@ impl Lexer {
                 '[' => Token::RIGHT_BRACKET,
                 '{' => Token::LEFT_BRACE,
                 '}' => Token::RIGHT_BRACE,
-                // '<' => Token::LESS_THAN,
-                // '>' => Token::GREATER_THAN,
                 '%' => Token::MODULO,
+                '<' => {
+                    if self.peek().unwrap_or_default() == '=' {
+                        Token::LESS_EQUAL
+                    } else {
+                        Token::LESS_THAN
+                    }
+                }
+                '>' => {
+                    if self.peek().unwrap_or_default() == '=' {
+                        Token::GREATER_EQUAL
+                    } else {
+                        Token::GREATER_THAN
+                    }
+                }
+                '~' => {
+                    if self.peek().unwrap_or_default() == '=' {
+                        Token::NEQ
+                    } else {
+                        Token::UNDEFINED
+                    }
+                }
+                '=' => {
+                    if self.peek().unwrap_or_default() == '=' {
+                        Token::EQ
+                    } else {
+                        Token::ASSIGN
+                    }
+                }
                 _ => Token::UNDEFINED,
             };
 
@@ -314,7 +345,7 @@ impl Lexer {
                 log_error!(
                     "[{}] undefined token '{c}' at column {}, line {}.",
                     colored("token", Color::Grey),
-                    self.cursor,
+                    self.column,
                     self.line
                 );
                 self.errored = true;
