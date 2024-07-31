@@ -138,8 +138,17 @@ impl Lexer {
         self.tape.chars().nth(self.cursor as usize + n as usize)
     }
 
+    /// Creates a substring given start on the tape, and the size.
+    fn sub_tape(&self, start: usize, size: usize) -> String {
+        self.tape[start..start + size].to_string()
+    }
+
     /// This will continue peaking until it can no longer peak.
-    fn while_peek<F: Fn(char) -> bool, P: Fn(char) -> bool>(&self, p: P, f: F) -> (isize, String) {
+    fn while_peek<F: Fn(char) -> bool, P: Fn(char, usize) -> bool>(
+        &self,
+        p: P,
+        f: F,
+    ) -> (isize, String) {
         let mut stack: String = String::new();
         let mut current_peek = 1;
         loop {
@@ -152,7 +161,7 @@ impl Lexer {
             // push the newest character to thet stack.
             stack.push(current_char);
 
-            if p(current_char) {
+            if p(current_char, current_peek as _) {
                 break;
             }
 
@@ -179,7 +188,7 @@ impl Lexer {
         // while we can still read characters from the tape.
         while let Some(c) = self.advance() {
             // ignore characters that don't care about.
-            if c.is_whitespace() {
+            if c.is_whitespace() && !is_end_of_line(c) {
                 continue;
             }
 
@@ -190,21 +199,32 @@ impl Lexer {
 
             if c == '"' || c == '\'' {
                 // collect the stack of chars into a string.
-                let (n, string) =
-                    self.while_peek(|c| is_end_of_line(c), |c| !(c == '"' || c == '\''));
+                let (mut n, string) = self.while_peek(
+                    |c, n| {
+                        self.sub_tape((self.cursor as usize + n) - 2, 3) != "\\\r\n"
+                            && is_end_of_line(c)
+                    },
+                    |c| !(c == '"'),
+                );
 
-                if self.is_end_of_file_nth(self.cursor + n)
-                    || is_end_of_line(string.chars().last().unwrap_or('\0'))
-                {
+                // so this is a bool set if the peek is at the end of the line.
+                let end_of_line = is_end_of_line(string.chars().last().unwrap());
+
+                if self.is_end_of_file_nth(self.cursor + n) || end_of_line {
                     log_error!(
-                        "[{}] unclosed string, starting at {}.",
+                        "[{}] unclosed string, starting at column {}, line {}.",
                         colored("token", Color::Grey),
-                        self.cursor
+                        self.cursor,
+                        self.line
                     );
                     self.errored = true;
+                    // we subtract two to account for the CRLF.
+                    if end_of_line {
+                        n -= 2;
+                    }
                 } else {
                     let string = &string[..].remove_last();
-                    println!("FOUND: {string:?}");
+                    tokens.push(Token::STRING(string.to_string()));
                 }
 
                 self.advance_nth(n);
@@ -266,9 +286,10 @@ impl Lexer {
             if token == Token::UNDEFINED {
                 // show an error message to the user if we don't know what they input.
                 log_error!(
-                    "[{}] undefined token '{c}' at column {}.",
+                    "[{}] undefined token '{c}' at column {}, line {}.",
                     colored("token", Color::Grey),
-                    self.cursor
+                    self.cursor,
+                    self.line
                 );
                 self.errored = true;
             }
