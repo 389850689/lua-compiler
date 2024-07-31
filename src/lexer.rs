@@ -1,3 +1,5 @@
+use std::{collections::HashMap, hash::Hash};
+
 use crate::{log_error, term_color::*};
 
 trait StrExt {
@@ -184,6 +186,30 @@ impl Lexer {
     pub fn tokenize(&mut self) -> Option<Tokens> {
         // store a list of tokens that we've found while lexing.
         let mut tokens: Tokens = Vec::new();
+
+        let keywords = HashMap::from([
+            ("and", Token::AND),
+            ("or", Token::OR),
+            ("while", Token::WHILE),
+            ("for", Token::FOR),
+            ("repeat", Token::REPEAT),
+            ("return", Token::RETURN),
+            ("then", Token::THEN),
+            ("true", Token::TRUE),
+            ("until", Token::UNTIL),
+            ("function", Token::FUNCTION),
+            ("if", Token::IF),
+            ("in", Token::IN),
+            ("local", Token::LOCAL),
+            ("nil", Token::NIL),
+            ("end", Token::END),
+            ("break", Token::BREAK),
+            ("do", Token::DO),
+            ("else", Token::ELSE),
+            ("elseif", Token::ELSEIF),
+            ("false", Token::FALSE),
+            ("not", Token::NOT),
+        ]);
 
         // while we can still read characters from the tape.
         while let Some(c) = self.advance() {
