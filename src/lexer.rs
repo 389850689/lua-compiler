@@ -313,10 +313,36 @@ impl Lexer {
             }
 
             // since numbers can be more then 1 character long we will handle it separately.
-            if c.is_numeric() {
+            if c.is_numeric() || c == '-' || c == '.' {
                 // read the rest of the number.
-                let (n, string) = self.while_peek(|c, _| is_end_of_line(c), |c| c.is_numeric());
-                continue;
+                let (n, string) = self.while_peek(
+                    |c, _| is_end_of_line(c),
+                    |c| c.is_numeric() || c == 'e' || c == '.' || c == '-',
+                );
+
+                let string = &string[..].remove_last();
+
+                // if it's just a "modification" character move on dude, else parse.
+                if !((c == '-' || c == '.') && string.is_empty()) {
+                    let number = match format!("{c}{string}").parse::<f64>() {
+                        Ok(n) => n as f64,
+                        Err(_) => {
+                            log_error!(
+                                "[{}] could not lex number: '{c}{string}' at column {}, line {}.",
+                                colored("token", Color::Grey),
+                                self.column,
+                                self.line
+                            );
+                            self.errored = true;
+                            0.0
+                        }
+                    };
+
+                    tokens.push(Token::NUMBER(number));
+
+                    self.advance_nth(n - 1);
+                    continue;
+                }
             }
 
             // check to see if this is the start of an identifier.

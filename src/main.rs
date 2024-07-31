@@ -30,6 +30,7 @@ fn main() {
 
     // tokenize the user generated code.
     let tokens = lexer::Lexer::new(&code).tokenize().unwrap_or_else(|| {
+        println!();
         std::process::exit(-1);
     });
 
