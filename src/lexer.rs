@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, f64, hash::Hash};
 
 use crate::{log_error, term_color::*};
 
@@ -270,37 +270,57 @@ impl Lexer {
                 continue;
             }
 
-            // since numbers can be more then 1 character long we will handle it separately.
-            if c.is_numeric() || c == '.' {
-                // this is a local buffer where we'll put our incomplete number.
-                let mut buffer = format!("{c}");
-                loop {
-                    // if there is another character in the tape.
-                    if let Some(c) = self.peek() {
-                        if c.is_numeric() || c == '.' {
-                            // we know that there is another character so the unwrap will never fail.
-                            buffer.push(self.advance().unwrap())
-                        } else {
-                            break;
-                        }
-                    } else {
-                        break;
+            if c == '.' {
+                if self.peek().unwrap_or_default() == '.' {
+                    if self.peek_nth(2).unwrap_or_default() == '.' {
+                        tokens.push(Token::DOTS);
+                        self.advance_nth(2);
+                        continue;
                     }
+                    tokens.push(Token::CONCAT);
+                    self.advance();
+                    continue;
                 }
-                // count the number of points in a number.
-                if buffer.chars().filter(|&p| p == '.').count() > 1 {
-                    log_error!("invalid number at column {}.", self.cursor - 1);
-                    std::process::exit(-1);
-                }
-                // turn the string into a number.
-                let number = buffer.parse::<f64>().unwrap();
-                // add the number to the tokens list.
+            }
+
+            // parse hexadecmial number.
+            if c == '0' && self.peek().unwrap_or_default() == 'x' {
+                // since we know now that it's a hex number we can consume the 'x'.
+                self.advance();
+                let (n, string) =
+                    self.while_peek(|c, _| is_end_of_line(c), |c| c.is_ascii_hexdigit());
+
+                let string = &string[..].remove_last();
+
+                let number = match i64::from_str_radix(string, 16) {
+                    Ok(n) => n as f64,
+                    Err(_) => {
+                        log_error!(
+                            "[{}] could not lex hexadecimal number. column {}, line {}.",
+                            colored("token", Color::Grey),
+                            self.column,
+                            self.line
+                        );
+                        self.errored = true;
+                        0.0
+                    }
+                };
+
                 tokens.push(Token::NUMBER(number));
+
+                self.advance_nth(n - 1);
+                continue;
+            }
+
+            // since numbers can be more then 1 character long we will handle it separately.
+            if c.is_numeric() {
+                // read the rest of the number.
+                let (n, string) = self.while_peek(|c, _| is_end_of_line(c), |c| c.is_numeric());
                 continue;
             }
 
             // check to see if this is the start of an identifier.
-            if c.is_alphabetic() {
+            if c.is_alphabetic() || c == '_' {
                 // read the rest of the identifier.
                 let (n, string) =
                     self.while_peek(|c, _| is_end_of_line(c), |c| c.is_alphanumeric());
