@@ -228,6 +228,21 @@ impl Lexer {
                 continue;
             }
 
+            // we got uhhh multiline comment here jit.
+            if c == '-' && self.peek().unwrap_or_default() == '-' {
+                if self.peek_nth(2).unwrap_or_default() == '['
+                    && self.peek_nth(3).unwrap_or_default() == '['
+                {
+                    let (n, _) = self.while_peek(
+                        |c, n| c == ']' && self.peek_nth(n as isize + 1).unwrap_or_default() == ']',
+                        |_| true,
+                    );
+
+                    self.advance_nth(n + 1);
+                    continue;
+                }
+            }
+
             // check if we're currently starting a comment.
             if c == '-' && self.peek().unwrap_or_default() == '-' {
                 // read until the end of the line.
@@ -397,8 +412,8 @@ impl Lexer {
                 '#' => Token::HASHTAG,
                 ';' => Token::SEMICOLON,
                 ':' => Token::COLON,
-                ']' => Token::LEFT_BRACKET,
-                '[' => Token::RIGHT_BRACKET,
+                ']' => Token::RIGHT_BRACKET,
+                '[' => Token::LEFT_BRACKET,
                 '{' => Token::LEFT_BRACE,
                 '}' => Token::RIGHT_BRACE,
                 '%' => Token::MODULO,
