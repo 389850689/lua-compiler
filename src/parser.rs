@@ -11,7 +11,12 @@ enum ASTNode {
     Chunk(Vec<ASTNode>, Vec<ASTNode>),
     Block(Box<ASTNode>),
     Statement(Box<ASTNode>),
+    Expression(Box<ASTNode>),
     FunctionCall(Box<ASTNode>),
+    LValueAssign {
+        var_list: Box<ASTNode>,
+        expression_list: Box<ASTNode>,
+    },
     Do(Box<ASTNode>),
     While {
         // this would be the condition.
@@ -56,7 +61,75 @@ enum ASTNode {
         // this would be the assignment of a variable.
         expression_list: Option<Box<ASTNode>>,
     },
+    Return(Option<Box<ASTNode>>),
+    FunctionName {
+        name: Box<ASTNode>,
+        members: Vec<ASTNode>,
+        colon: Option<Box<ASTNode>>,
+    },
+    VariableList {
+        variable: Box<ASTNode>,
+        tail_list: Vec<ASTNode>,
+    },
+    PrefixExpression(Box<ASTNode>),
+    PrefixExpressionBrackets(Box<ASTNode>),
+    PrefixExpressionDot(Box<ASTNode>),
+    PrefixExpressionArgs {
+        prefix_expression: Box<ASTNode>,
+        arguments: Box<ASTNode>,
+    },
+    PrefixExpressionNameArgs {
+        prefix_expression: Box<ASTNode>,
+        name: Box<ASTNode>,
+        arguments: Box<ASTNode>,
+    },
+    NameList {
+        name: Box<ASTNode>,
+        tail_list: Vec<ASTNode>,
+    },
+    BinaryOp {
+        left: Box<ASTNode>,
+        binary_operator: Box<ASTNode>,
+        right: Box<ASTNode>,
+    },
+    UnaryOp {
+        unary_operator: Box<ASTNode>,
+        right: Box<ASTNode>,
+    },
+    ExpressionList {
+        head_list: Vec<ASTNode>,
+        expression: Box<ASTNode>,
+    },
+    ArgsParamList(Option<Box<ASTNode>>),
+    FunctionBody {
+        parameter_list: Option<Box<ASTNode>>,
+        block: Box<ASTNode>,
+    },
+    ParameterList(Box<ASTNode>),
+    // This is just one of the possible productions.
+    ParameterListA {
+        name_list: Box<ASTNode>,
+        variadic: Box<ASTNode>,
+    },
+    TableConstructor(Box<ASTNode>),
+    FieldList {
+        field: Box<ASTNode>,
+        fieldsep: Vec<(ASTNode, ASTNode)>,
+        fieldsep_b: Option<Box<ASTNode>>,
+    },
+    Field(Box<ASTNode>),
+    FieldA {
+        expression_a: Box<ASTNode>,
+        expression_b: Box<ASTNode>,
+    },
+    FieldB {
+        name: Box<ASTNode>,
+        expression: Box<ASTNode>,
+    },
+    Fieldsep(Box<ASTNode>),
+
     Name(String),
+    Token(Token),
 }
 
 impl Parser {
