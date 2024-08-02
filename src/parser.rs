@@ -7,6 +7,8 @@ pub struct Parser {
     errored: bool,
 }
 
+type MaybeASTNode = Option<ASTNode>;
+
 enum ASTNode {
     Chunk(Vec<ASTNode>, Vec<ASTNode>),
     Block(Box<ASTNode>),
@@ -196,6 +198,17 @@ impl Parser {
         }
     }
 
+    fn name(&mut self) -> MaybeASTNode {
+        let string = match self.current() {
+            Token::STRING(s) => s,
+            _ => String::new(),
+        };
+        if self.accept(Token::STRING(string.clone())) {
+            return Some(ASTNode::Name(string));
+        }
+        None
+    }
+
     fn args(&mut self) -> Option<ASTNode> {
         None
     }
@@ -209,10 +222,24 @@ impl Parser {
                     return None;
                 }
             };
+            return Some(ASTNode::FunctionCall(Box::new(
+                ASTNode::PrefixExpressionArgs {
+                    prefix_expression: Box::new(prefix_exp),
+                    arguments: Box::new(args),
+                },
+            )));
         }
 
         if let Some(prefix_exp) = self.prefixexp() {
             self.expect(Token::COLON);
+
+            let name = match self.name() {
+                Some(args) => args,
+                None => {
+                    self.report_expected_error("<name>");
+                    return None;
+                }
+            };
 
             let args = match self.args() {
                 Some(args) => args,
@@ -221,18 +248,22 @@ impl Parser {
                     return None;
                 }
             };
+
+            return Some(ASTNode::FunctionCall(Box::new(
+                ASTNode::PrefixExpressionNameArgs {
+                    prefix_expression: Box::new(prefix_exp),
+                    name: Box::new(name),
+                    arguments: Box::new(args),
+                },
+            )));
         }
 
         None
     }
 
     fn var(&mut self) -> Option<ASTNode> {
-        let string = match self.current() {
-            Token::STRING(s) => s,
-            _ => String::new(),
-        };
-        if self.accept(Token::STRING(string.clone())) {
-            return Some(ASTNode::Variable(Box::new(ASTNode::Name(string))));
+        if let Some(tree) = self.name() {
+            return Some(ASTNode::Variable(Box::new(tree)));
         }
         None
     }
