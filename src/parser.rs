@@ -23,6 +23,40 @@ enum ASTNode {
         // this would be the end condition.
         expression: Box<ASTNode>,
     },
+    If {
+        // this would be the if condition.
+        expression: Box<ASTNode>,
+        block: Box<ASTNode>,
+        elseif: Vec<ASTNode>,
+        then_else: Option<Box<ASTNode>>,
+    },
+    ForNumeric {
+        name: Box<ASTNode>,
+        from_expression: Box<ASTNode>,
+        to_expression: Box<ASTNode>,
+        step_expression: Option<Box<ASTNode>>,
+        do_block: Box<ASTNode>,
+    },
+    ForGeneric {
+        name_list: Box<ASTNode>,
+        expression_list_1: Box<ASTNode>,
+        do_block: Box<ASTNode>,
+    },
+    Function {
+        function_name: Box<ASTNode>,
+        function_body: Box<ASTNode>,
+    },
+    LocalFunction {
+        // NOTE: this is not a funcname, rather a NAME.
+        function_name: Box<ASTNode>,
+        function_body: Box<ASTNode>,
+    },
+    LocalVariable {
+        name_list: Box<ASTNode>,
+        // this would be the assignment of a variable.
+        expression_list: Option<Box<ASTNode>>,
+    },
+    Name(String),
 }
 
 impl Parser {
