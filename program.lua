@@ -1,6 +1,12 @@
----[[
-local x = 1000000
-local y = "they not doing it like us."
-local z = 10
-print(z)
---]]
+-- defines a factorial function
+function fact(n)
+	if n == 0 then
+		return 1
+	else
+		return n * fact(n - 1)
+	end
+end
+
+print("enter a number:")
+local a = 5
+print(fact(a))

@@ -1,4 +1,5 @@
 mod lexer;
+mod parser;
 mod term_color;
 
 use std::env::{self, args};
@@ -34,7 +35,15 @@ fn main() {
         std::process::exit(-1);
     });
 
-    log_success!("finished tokenization: {tokens:#?}.\n");
+    log_success!("finished tokenization.\n");
+
+    // parse the user generated code.
+    let ast = parser::Parser::new(tokens).parse().unwrap_or_else(|| {
+        println!();
+        std::process::exit(-1);
+    });
+
+    log_success!("finished constructing syntax tree: {ast:?}.\n");
 
     log_success!("finished compilation.\n");
 }

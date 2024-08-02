@@ -1,4 +1,4 @@
-use std::{collections::HashMap, f64, hash::Hash};
+use std::{collections::HashMap, f64};
 
 use crate::{log_error, term_color::*};
 
@@ -18,7 +18,7 @@ impl StrExt for str {
 type Tokens = Vec<Token>;
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum Token {
     AND,
     END,
@@ -70,6 +70,7 @@ pub enum Token {
     COLON,
     COMMA,
     DOT,
+    #[default]
     UNDEFINED,
 }
 
