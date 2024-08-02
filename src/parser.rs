@@ -71,6 +71,7 @@ enum ASTNode {
         variable: Box<ASTNode>,
         tail_list: Vec<ASTNode>,
     },
+    Variable(Box<ASTNode>),
     PrefixExpression(Box<ASTNode>),
     PrefixExpressionBrackets(Box<ASTNode>),
     PrefixExpressionDot(Box<ASTNode>),
@@ -127,7 +128,8 @@ enum ASTNode {
         expression: Box<ASTNode>,
     },
     Fieldsep(Box<ASTNode>),
-
+    BinaryOperator(Box<ASTNode>),
+    UnaryOperator(Box<ASTNode>),
     Name(String),
     Token(Token),
 }
@@ -139,6 +141,16 @@ impl Parser {
             cursor: 0,
             errored: false,
         }
+    }
+
+    fn report_expected_error(&mut self, expected: &str) {
+        log_error!(
+            "[{}] expected {:?}, found {:?}",
+            colored("parser", Color::Grey),
+            expected,
+            self.current(),
+        );
+        self.errored = true;
     }
 
     fn is_eof(&self) -> bool {
@@ -184,8 +196,61 @@ impl Parser {
         }
     }
 
+    fn args(&mut self) -> Option<ASTNode> {
+        None
+    }
+
+    fn functioncall(&mut self) -> Option<ASTNode> {
+        if let Some(prefix_exp) = self.prefixexp() {
+            let args = match self.args() {
+                Some(args) => args,
+                None => {
+                    self.report_expected_error("<args>");
+                    return None;
+                }
+            };
+        }
+
+        if let Some(prefix_exp) = self.prefixexp() {
+            self.expect(Token::COLON);
+
+            let args = match self.args() {
+                Some(args) => args,
+                None => {
+                    self.report_expected_error("<args>");
+                    return None;
+                }
+            };
+        }
+
+        None
+    }
+
+    fn var(&mut self) -> Option<ASTNode> {
+        let string = match self.current() {
+            Token::STRING(s) => s,
+            _ => String::new(),
+        };
+        if self.accept(Token::STRING(string.clone())) {
+            return Some(ASTNode::Variable(Box::new(ASTNode::Name(string))));
+        }
+        None
+    }
+
+    fn prefixexp(&mut self) -> Option<ASTNode> {
+        if let Some(tree) = self.var() {
+            return Some(ASTNode::PrefixExpression(Box::new(tree)));
+        }
+
+        None
+    }
+
+    fn function(&mut self) -> Option<ASTNode> {
+        None
+    }
+
     // parse an expression.
-    fn exp(&mut self) -> bool {
+    fn exp(&mut self) -> Option<ASTNode> {
         let found_terminal = match self.current() {
             Token::NIL | Token::FALSE | Token::TRUE | Token::DOTS => true,
             Token::NUMBER(_) => true,
@@ -195,10 +260,14 @@ impl Parser {
 
         if found_terminal {
             self.advance();
-            return found_terminal;
+            return Some(ASTNode::Token(self.current()));
         }
 
-        false
+        if let Some(tree) = self.function() {
+            return Some(tree);
+        }
+
+        None
     }
 
     fn stat(&mut self) -> bool {
