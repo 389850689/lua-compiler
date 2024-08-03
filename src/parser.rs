@@ -115,11 +115,11 @@ pub enum ASTNode {
         name_list: Box<ASTNode>,
         variadic: Box<ASTNode>,
     },
-    TableConstructor(Box<ASTNode>),
+    TableConstructor(Option<Box<ASTNode>>),
     FieldList {
         field: Box<ASTNode>,
-        fieldsep: Vec<(ASTNode, ASTNode)>,
-        fieldsep_b: Option<Box<ASTNode>>,
+        separated_fields: Vec<(ASTNode, ASTNode)>,
+        separator: Option<Box<ASTNode>>,
     },
     Field(Box<ASTNode>),
     FieldA {
@@ -180,6 +180,10 @@ impl Parser {
         self.cursor += 1;
     }
 
+    fn backtrack(&mut self) {
+        self.cursor -= 1;
+    }
+
     fn accept(&mut self, token: Token) -> bool {
         if self.is_match(token) {
             self.advance();
@@ -215,7 +219,55 @@ impl Parser {
         None
     }
 
-    fn table_constructor(&mut self) -> MaybeASTNode {
+    fn fieldsep(&mut self) -> MaybeASTNode {
+        if self.accept(Token::COMMA) {
+            return Some(ASTNode::Fieldsep(Box::new(ASTNode::Token(Token::COMMA))));
+        }
+
+        if self.accept(Token::SEMICOLON) {
+            return Some(ASTNode::Fieldsep(Box::new(ASTNode::Token(
+                Token::SEMICOLON,
+            ))));
+        }
+
+        None
+    }
+
+    fn field(&mut self) -> MaybeASTNode {
+        None
+    }
+
+    fn fieldlist(&mut self) -> MaybeASTNode {
+        if let Some(field) = self.field() {
+            let mut fieldseps = Vec::new();
+
+            while let Some(fieldsep) = self.fieldsep() {
+                let field = self.field().or_else(|| {
+                    self.report_expected_error("<field>");
+                    return None;
+                })?;
+
+                fieldseps.push((fieldsep, field))
+            }
+
+            let fieldsep = self.fieldsep();
+
+            return Some(ASTNode::FieldList {
+                field: Box::new(field),
+                separated_fields: fieldseps,
+                separator: fieldsep.map(Box::new),
+            });
+        }
+        None
+    }
+
+    fn tableconstructor(&mut self) -> MaybeASTNode {
+        if self.accept(Token::LEFT_BRACE) {
+            let field_list = self.fieldlist();
+            self.expect(Token::RIGHT_BRACE);
+            return Some(ASTNode::TableConstructor(field_list.map(Box::new)));
+        }
+
         None
     }
 
@@ -316,6 +368,14 @@ impl Parser {
         None
     }
 
+    fn binop(&mut self) -> MaybeASTNode {
+        None
+    }
+
+    fn unop(&mut self) -> MaybeASTNode {
+        None
+    }
+
     // parse an expression.
     fn exp(&mut self) -> Option<ASTNode> {
         let found_terminal = match self.current() {
@@ -327,11 +387,33 @@ impl Parser {
 
         if found_terminal {
             self.advance();
-            return Some(ASTNode::Token(self.current()));
+            return Some(ASTNode::Expression(Box::new(ASTNode::Token(
+                self.current(),
+            ))));
         }
 
         if let Some(tree) = self.function() {
-            return Some(tree);
+            return Some(ASTNode::Expression(Box::new(tree)));
+        }
+
+        if let Some(tree) = self.prefixexp() {
+            return Some(ASTNode::Expression(Box::new(tree)));
+        }
+
+        if let Some(tree) = self.tableconstructor() {
+            return Some(ASTNode::Expression(Box::new(tree)));
+        }
+
+        // check if the next operator is a binary operator.
+        self.advance();
+        if let Some(tree) = self.binop() {
+            return Some(ASTNode::Expression(Box::new(tree)));
+        } else {
+            self.backtrack();
+        }
+
+        if let Some(tree) = self.unop() {
+            return Some(ASTNode::Expression(Box::new(tree)));
         }
 
         None
