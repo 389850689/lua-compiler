@@ -130,6 +130,7 @@ enum ASTNode {
         expression: Box<ASTNode>,
     },
     Fieldsep(Box<ASTNode>),
+    LastStatement(Box<ASTNode>),
     BinaryOperator(Box<ASTNode>),
     UnaryOperator(Box<ASTNode>),
     Name(String),
@@ -198,6 +199,10 @@ impl Parser {
         }
     }
 
+    fn explist1(&mut self) -> MaybeASTNode {
+        None
+    }
+
     fn name(&mut self) -> MaybeASTNode {
         let string = match self.current() {
             Token::STRING(s) => s,
@@ -209,7 +214,21 @@ impl Parser {
         None
     }
 
+    fn table_constructor(&mut self) -> MaybeASTNode {
+        None
+    }
+
     fn args(&mut self) -> Option<ASTNode> {
+        if self.accept(Token::LEFT_PAREN) {
+            // doesn't really matter if this returns anything.
+            let exp_list = self.explist1();
+            self.expect(Token::RIGHT_PAREN);
+            return Some(ASTNode::ArgsParamList(match exp_list {
+                Some(t) => Some(Box::new(t)),
+                None => None,
+            }));
+        }
+
         None
     }
 
@@ -301,33 +320,57 @@ impl Parser {
         None
     }
 
-    fn stat(&mut self) -> bool {
+    fn stat(&mut self) -> MaybeASTNode {
         if self.accept(Token::DO) {
             self.block();
             self.expect(Token::END);
-            return true;
+            return None;
         }
 
-        false
+        None
     }
 
-    fn block(&mut self) {
-        self.chunk();
+    fn laststat(&mut self) -> MaybeASTNode {
+        if self.accept(Token::RETURN) {
+            let expression_list = self.explist1();
+            return Some(ASTNode::LastStatement(match expression_list {
+                Some(t) => Box::new(t),
+                None => Box::new(ASTNode::Token(Token::RETURN)),
+            }));
+        }
+
+        if self.accept(Token::BREAK) {
+            return Some(ASTNode::LastStatement(Box::new(ASTNode::Token(
+                Token::BREAK,
+            ))));
+        }
+
+        None
     }
 
-    fn chunk(&mut self) {
-        self.stat();
+    fn block(&mut self) -> MaybeASTNode {
+        self.chunk()
     }
 
-    pub fn parse(&mut self) -> Option<()> {
-        let symbol = self.current();
-        self.chunk();
-        println!("{:?}", symbol);
+    fn chunk(&mut self) -> MaybeASTNode {
+        let mut statements = Vec::new();
+
+        while let Some(tree) = self.stat() {
+            // optional, no need to do anything.
+            self.accept(Token::SEMICOLON);
+            statements.push(tree);
+        }
+
+        None
+    }
+
+    pub fn parse(&mut self) -> MaybeASTNode {
+        let chunk = self.chunk();
 
         if self.errored {
             None
         } else {
-            Some(())
+            chunk
         }
     }
 }
