@@ -210,6 +210,19 @@ impl Parser {
     }
 
     fn explist1(&mut self) -> MaybeASTNode {
+        let mut exp_list = Vec::new();
+
+        while let Some(tree) = self.exp() {
+            self.expect(Token::COMMA);
+            exp_list.push(tree);
+        }
+
+        if let Some(exp) = self.exp() {
+            return Some(ASTNode::ExpressionList {
+                head_list: exp_list,
+                expression: Box::new(exp),
+            });
+        }
         None
     }
 
