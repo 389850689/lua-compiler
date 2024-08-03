@@ -9,8 +9,9 @@ pub struct Parser {
 
 type MaybeASTNode = Option<ASTNode>;
 
-enum ASTNode {
-    Chunk(Vec<ASTNode>, Vec<ASTNode>),
+#[derive(Clone, Debug)]
+pub enum ASTNode {
+    Chunk(Vec<ASTNode>, Option<Box<ASTNode>>),
     Block(Box<ASTNode>),
     Statement(Box<ASTNode>),
     Expression(Box<ASTNode>),
@@ -148,7 +149,7 @@ impl Parser {
 
     fn report_expected_error(&mut self, expected: &str) {
         log_error!(
-            "[{}] expected {:?}, found {:?}",
+            "[{}] expected {:?}, found {:?}.",
             colored("parser", Color::Grey),
             expected,
             self.current(),
@@ -292,6 +293,10 @@ impl Parser {
             return Some(ASTNode::PrefixExpression(Box::new(tree)));
         }
 
+        if let Some(tree) = self.var() {
+            return Some(ASTNode::PrefixExpression(Box::new(tree)));
+        }
+
         None
     }
 
@@ -322,9 +327,17 @@ impl Parser {
 
     fn stat(&mut self) -> MaybeASTNode {
         if self.accept(Token::DO) {
-            self.block();
+            let block = match self.block() {
+                Some(block) => block,
+                None => {
+                    self.report_expected_error("<block>");
+                    return None;
+                }
+            };
+
             self.expect(Token::END);
-            return None;
+
+            return Some(ASTNode::Statement(Box::new(ASTNode::Do(Box::new(block)))));
         }
 
         None
@@ -361,7 +374,21 @@ impl Parser {
             statements.push(tree);
         }
 
-        None
+        let last_statement = self.laststat();
+
+        let chunk = ASTNode::Chunk(
+            statements.clone(),
+            match last_statement.clone() {
+                Some(t) => Some(Box::new(t)),
+                None => None,
+            },
+        );
+
+        // if statements.is_empty() && last_statement.is_none() {
+        //     None
+        // } else {
+        Some(chunk)
+        // }
     }
 
     pub fn parse(&mut self) -> MaybeASTNode {

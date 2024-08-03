@@ -35,7 +35,7 @@ fn main() {
         std::process::exit(-1);
     });
 
-    log_success!("finished tokenization.\n");
+    log_success!("finished tokenization: {:?}.", tokens);
 
     // parse the user generated code.
     let ast = parser::Parser::new(tokens).parse().unwrap_or_else(|| {
@@ -43,7 +43,7 @@ fn main() {
         std::process::exit(-1);
     });
 
-    log_success!("finished constructing syntax tree: {ast:?}.\n");
+    log_success!("finished constructing syntax tree: {ast:#?}.");
 
     log_success!("finished compilation.\n");
 }
