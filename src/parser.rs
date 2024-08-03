@@ -325,13 +325,11 @@ impl Parser {
 
     fn functioncall(&mut self) -> Option<ASTNode> {
         if let Some(prefix_exp) = self.prefixexp() {
-            let args = match self.args() {
-                Some(args) => args,
-                None => {
-                    self.report_expected_error("<args>");
-                    return None;
-                }
-            };
+            let args = self.args().or_else(|| {
+                self.report_expected_error("<args>");
+                return None;
+            })?;
+
             return Some(ASTNode::FunctionCall(Box::new(
                 ASTNode::PrefixExpressionArgs {
                     prefix_expression: Box::new(prefix_exp),
@@ -407,6 +405,53 @@ impl Parser {
     }
 
     fn binop(&mut self) -> MaybeASTNode {
+        let found_terminal = match self.current() {
+            Token::ADD
+            | Token::SUBTRACT
+            | Token::MULTIPLY
+            | Token::DIVIDE
+            | Token::XOR
+            | Token::MODULO
+            | Token::CONCAT
+            | Token::LESS_THAN
+            | Token::LESS_EQUAL
+            | Token::GREATER_THAN
+            | Token::GREATER_EQUAL
+            | Token::EQ
+            | Token::NEQ
+            | Token::AND
+            | Token::OR => true,
+            _ => false,
+        };
+
+        // we now know it's a binary operator.
+        if found_terminal {
+            let current_terminal = self.current();
+
+            // go back a token to get the first argument.
+            self.backtrack();
+
+            let exp1 = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            // advance twice to get to the right hand side operand.
+            self.advance();
+            self.advance();
+
+            let exp2 = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            return Some(ASTNode::BinaryOp {
+                left: Box::new(exp1),
+                binary_operator: Box::new(ASTNode::Token(current_terminal)),
+                right: Box::new(exp2),
+            });
+        }
+
         None
     }
 
@@ -417,9 +462,9 @@ impl Parser {
     // parse an expression.
     fn exp(&mut self) -> Option<ASTNode> {
         let found_terminal = match self.current() {
-            Token::NIL | Token::FALSE | Token::TRUE | Token::DOTS => true,
             Token::NUMBER(_) => true,
             Token::STRING(_) => true,
+            Token::NIL | Token::FALSE | Token::TRUE | Token::DOTS => true,
             _ => false,
         };
 
