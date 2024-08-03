@@ -1,3 +1,5 @@
+use std::thread::current;
+
 use crate::lexer::Token;
 use crate::{log_error, term_color::*};
 
@@ -50,8 +52,11 @@ pub enum ASTNode {
         expression_list_1: Box<ASTNode>,
         do_block: Box<ASTNode>,
     },
+    // Function {
+    //     function_name: Box<ASTNode>,
+    //     function_body: Box<ASTNode>,
+    // },
     Function {
-        function_name: Box<ASTNode>,
         function_body: Box<ASTNode>,
     },
     LocalFunction {
@@ -216,6 +221,27 @@ impl Parser {
         if self.accept(Token::STRING(string.clone())) {
             return Some(ASTNode::Name(string));
         }
+        None
+    }
+
+    fn namelist(&mut self) -> MaybeASTNode {
+        if let Some(name) = self.name() {
+            let mut name_list = Vec::new();
+
+            while self.accept(Token::COMMA) {
+                let name = self.name().or_else(|| {
+                    self.report_expected_error("<name>");
+                    return None;
+                })?;
+                name_list.push(name);
+            }
+
+            return Some(ASTNode::NameList {
+                name: Box::new(name),
+                tail_list: name_list,
+            });
+        }
+
         None
     }
 
@@ -400,7 +426,21 @@ impl Parser {
         None
     }
 
+    fn funcbody(&mut self) -> MaybeASTNode {
+        None
+    }
+
     fn function(&mut self) -> Option<ASTNode> {
+        if self.accept(Token::FUNCTION) {
+            let funcbody = self.funcbody().or_else(|| {
+                self.report_expected_error("<funcbody>");
+                return None;
+            })?;
+
+            return Some(ASTNode::Function {
+                function_body: Box::new(funcbody),
+            });
+        }
         None
     }
 
@@ -451,11 +491,31 @@ impl Parser {
                 right: Box::new(exp2),
             });
         }
-
         None
     }
 
     fn unop(&mut self) -> MaybeASTNode {
+        let found_terminal = match self.current() {
+            Token::SUBTRACT | Token::NOT | Token::HASHTAG => true,
+            _ => false,
+        };
+
+        // we now know it's a unary operator.
+        if found_terminal {
+            let current_terminal = self.current();
+
+            self.advance();
+
+            let exp = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            return Some(ASTNode::UnaryOp {
+                unary_operator: Box::new(ASTNode::Token(current_terminal)),
+                right: Box::new(exp),
+            });
+        }
         None
     }
 
@@ -515,6 +575,12 @@ impl Parser {
             self.expect(Token::END);
 
             return Some(ASTNode::Statement(Box::new(ASTNode::Do(Box::new(block)))));
+        }
+
+        if self.accept(Token::LOCAL) {
+            if self.accept(Token::FUNCTION) {
+                return None;
+            }
         }
 
         None
