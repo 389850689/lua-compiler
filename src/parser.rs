@@ -293,8 +293,20 @@ impl Parser {
             return Some(ASTNode::PrefixExpression(Box::new(tree)));
         }
 
-        if let Some(tree) = self.var() {
+        if let Some(tree) = self.functioncall() {
             return Some(ASTNode::PrefixExpression(Box::new(tree)));
+        }
+
+        if self.accept(Token::LEFT_PAREN) {
+            let exp = match self.exp() {
+                Some(exp) => exp,
+                None => {
+                    self.report_expected_error("<exp>");
+                    return None;
+                }
+            };
+            self.expect(Token::RIGHT_PAREN);
+            return Some(ASTNode::PrefixExpression(Box::new(exp)));
         }
 
         None
