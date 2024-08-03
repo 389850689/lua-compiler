@@ -234,6 +234,44 @@ impl Parser {
     }
 
     fn field(&mut self) -> MaybeASTNode {
+        if self.accept(Token::LEFT_BRACKET) {
+            let exp1 = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            self.expect(Token::RIGHT_BRACKET);
+            self.expect(Token::ASSIGN);
+
+            let exp2 = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            return Some(ASTNode::Field(Box::new(ASTNode::FieldA {
+                expression_a: Box::new(exp1),
+                expression_b: Box::new(exp2),
+            })));
+        }
+
+        if let Some(name) = self.name() {
+            self.expect(Token::ASSIGN);
+
+            let exp = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            return Some(ASTNode::Field(Box::new(ASTNode::FieldB {
+                name: Box::new(name),
+                expression: Box::new(exp),
+            })));
+        }
+
+        if let Some(exp) = self.exp() {
+            return Some(ASTNode::Field(Box::new(exp)));
+        }
+
         None
     }
 
