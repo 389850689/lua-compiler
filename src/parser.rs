@@ -3,6 +3,7 @@ use std::thread::current;
 use crate::lexer::Token;
 use crate::{log_error, term_color::*};
 
+#[derive(Clone)]
 pub struct Parser {
     tokens: Vec<Token>,
     cursor: usize,
@@ -137,8 +138,8 @@ pub enum ASTNode {
     },
     Fieldsep(Box<ASTNode>),
     LastStatement(Box<ASTNode>),
-    BinaryOperator(Box<ASTNode>),
-    UnaryOperator(Box<ASTNode>),
+    // BinaryOperator(Box<ASTNode>),
+    // UnaryOperator(Box<ASTNode>),
     Name(String),
     Token(Token),
 }
@@ -171,6 +172,22 @@ impl Parser {
         self.tokens.get(self.cursor + 1).cloned()
     }
 
+    fn peek_expression(&mut self, n: Option<usize>) -> MaybeASTNode {
+        let mut fork = self.clone();
+        for _ in 0..n.unwrap_or(0) {
+            fork.advance();
+        }
+        fork.exp()
+    }
+
+    // fn peek_binop(&mut self, n: Option<usize>) -> MaybeASTNode {
+    //     let mut fork = self.clone();
+    //     for _ in 0..n.unwrap_or(0) {
+    //         fork.advance();
+    //     }
+    //     fork.binop()
+    // }
+
     /// Returns the current token.
     fn current(&self) -> Token {
         self.tokens.get(self.cursor).cloned().unwrap_or_default()
@@ -199,10 +216,11 @@ impl Parser {
     }
 
     fn expect(&mut self, token: Token) {
-        if !self.accept(token) {
+        if !self.accept(token.clone()) {
             log_error!(
-                "[{}] unexpected symbol: {:?}",
+                "[auto: {}] expected symbol: {:?}, found {:?}.",
                 colored("parser", Color::Grey),
+                token,
                 self.current(),
             );
             self.errored = true;
@@ -212,27 +230,25 @@ impl Parser {
     fn explist1(&mut self) -> MaybeASTNode {
         let mut exp_list = Vec::new();
 
+        println!("test");
         while let Some(tree) = self.exp() {
-            self.expect(Token::COMMA);
-            exp_list.push(tree);
+            if self.accept(Token::COMMA) {
+                exp_list.push(tree);
+            } else {
+                return Some(ASTNode::ExpressionList {
+                    head_list: exp_list,
+                    expression: Box::new(tree),
+                });
+            }
         }
 
-        if let Some(exp) = self.exp() {
-            return Some(ASTNode::ExpressionList {
-                head_list: exp_list,
-                expression: Box::new(exp),
-            });
-        }
         None
     }
 
     fn name(&mut self) -> MaybeASTNode {
-        let string = match self.current() {
-            Token::STRING(s) => s,
-            _ => String::new(),
-        };
-        if self.accept(Token::STRING(string.clone())) {
-            return Some(ASTNode::Name(string));
+        if let Token::NAME(s) = self.current() {
+            self.advance();
+            return Some(ASTNode::Name(s));
         }
         None
     }
@@ -457,8 +473,8 @@ impl Parser {
         None
     }
 
-    fn binop(&mut self) -> MaybeASTNode {
-        let found_terminal = match self.current() {
+    fn is_currently_binop(&self) -> bool {
+        match self.current() {
             Token::ADD
             | Token::SUBTRACT
             | Token::MULTIPLY
@@ -475,65 +491,230 @@ impl Parser {
             | Token::AND
             | Token::OR => true,
             _ => false,
-        };
+        }
+    }
 
-        // we now know it's a binary operator.
-        if found_terminal {
-            let current_terminal = self.current();
+    // fn binop(&mut self) -> MaybeASTNode {
+    //     // we now know it's a binary operator.
+    //     if self.is_currently_binop() {
+    //         let current_terminal = self.current();
+    //
+    //         // go back a token to get the first argument.
+    //         self.backtrack();
+    //
+    //         let exp1 = self.exp().or_else(|| {
+    //             self.report_expected_error("<exp>");
+    //             return None;
+    //         })?;
+    //
+    //         // advance twice to get to the right hand side operand.
+    //         self.advance();
+    //         self.advance();
+    //
+    //         let exp2 = self.exp().or_else(|| {
+    //             self.report_expected_error("<exp>");
+    //             return None;
+    //         })?;
+    //
+    //         return Some(ASTNode::BinaryOp {
+    //             left: Box::new(exp1),
+    //             binary_operator: Box::new(ASTNode::BinaryOperator(Box::new(ASTNode::Token(
+    //                 current_terminal,
+    //             )))),
+    //             right: Box::new(exp2),
+    //         });
+    //     }
+    //     None
+    // }
+    //
+    // fn unop(&mut self) -> MaybeASTNode {
+    //     let found_terminal = match self.current() {
+    //         Token::SUBTRACT | Token::NOT | Token::HASHTAG => true,
+    //         _ => false,
+    //     };
+    //
+    //     // we now know it's a unary operator.
+    //     if found_terminal {
+    //         let current_terminal = self.current();
+    //
+    //         self.advance();
+    //
+    //         let exp = self.exp().or_else(|| {
+    //             self.report_expected_error("<exp>");
+    //             return None;
+    //         })?;
+    //
+    //         return Some(ASTNode::UnaryOp {
+    //             unary_operator: Box::new(ASTNode::UnaryOperator(Box::new(ASTNode::Token(
+    //                 current_terminal,
+    //             )))),
+    //             right: Box::new(exp),
+    //         });
+    //     }
+    //     None
+    // }
 
-            // go back a token to get the first argument.
-            self.backtrack();
+    fn exp_or(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.exp_and() {
+            if self.accept(Token::OR) {
+                let exp = self.exp_and().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
 
-            let exp1 = self.exp().or_else(|| {
-                self.report_expected_error("<exp>");
-                return None;
-            })?;
-
-            // advance twice to get to the right hand side operand.
-            self.advance();
-            self.advance();
-
-            let exp2 = self.exp().or_else(|| {
-                self.report_expected_error("<exp>");
-                return None;
-            })?;
-
-            return Some(ASTNode::BinaryOp {
-                left: Box::new(exp1),
-                binary_operator: Box::new(ASTNode::Token(current_terminal)),
-                right: Box::new(exp2),
-            });
+                return Some(ASTNode::Expression(Box::new(ASTNode::BinaryOp {
+                    left: Box::new(tree),
+                    binary_operator: Box::new(ASTNode::Token(Token::OR)),
+                    right: Box::new(exp),
+                })));
+            }
         }
         None
     }
 
-    fn unop(&mut self) -> MaybeASTNode {
-        let found_terminal = match self.current() {
-            Token::SUBTRACT | Token::NOT | Token::HASHTAG => true,
-            _ => false,
-        };
+    fn exp_and(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.exp_eqaulity() {
+            if self.accept(Token::AND) {
+                let exp = self.exp_eqaulity().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
 
-        // we now know it's a unary operator.
-        if found_terminal {
-            let current_terminal = self.current();
+                return Some(ASTNode::Expression(Box::new(ASTNode::BinaryOp {
+                    left: Box::new(tree),
+                    binary_operator: Box::new(ASTNode::Token(Token::AND)),
+                    right: Box::new(exp),
+                })));
+            }
+        }
+        None
+    }
 
-            self.advance();
+    fn exp_eqaulity(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.exp_concat() {
+            let current_token = self.current();
+            if self.accept(Token::GREATER_THAN)
+                || self.accept(Token::LESS_THAN)
+                || self.accept(Token::LESS_EQUAL)
+                || self.accept(Token::GREATER_EQUAL)
+                || self.accept(Token::NEQ)
+                || self.accept(Token::EQ)
+            {
+                let exp = self.exp_concat().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
 
-            let exp = self.exp().or_else(|| {
+                return Some(ASTNode::Expression(Box::new(ASTNode::BinaryOp {
+                    left: Box::new(tree),
+                    binary_operator: Box::new(ASTNode::Token(current_token)),
+                    right: Box::new(exp),
+                })));
+            }
+        }
+        None
+    }
+
+    // NOTE: make this right associative in a second.
+    fn exp_concat(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.exp_term() {
+            if self.accept(Token::CONCAT) {
+                let exp = self.exp_term().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+
+                return Some(ASTNode::Expression(Box::new(ASTNode::BinaryOp {
+                    left: Box::new(tree),
+                    binary_operator: Box::new(ASTNode::Token(Token::CONCAT)),
+                    right: Box::new(exp),
+                })));
+            }
+        }
+        None
+    }
+
+    fn exp_term(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.exp_factor() {
+            let current_token = self.current();
+            if self.accept(Token::ADD) || self.accept(Token::SUBTRACT) {
+                let exp = self.exp_factor().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+
+                return Some(ASTNode::Expression(Box::new(ASTNode::BinaryOp {
+                    left: Box::new(tree),
+                    binary_operator: Box::new(ASTNode::Token(current_token)),
+                    right: Box::new(exp),
+                })));
+            }
+        }
+        None
+    }
+
+    fn exp_factor(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.exp_unary() {
+            let current_token = self.current();
+            if self.accept(Token::MULTIPLY)
+                || self.accept(Token::DIVIDE)
+                || self.accept(Token::MODULO)
+            {
+                let exp = self.exp_unary().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+
+                return Some(ASTNode::Expression(Box::new(ASTNode::BinaryOp {
+                    left: Box::new(tree),
+                    binary_operator: Box::new(ASTNode::Token(current_token)),
+                    right: Box::new(exp),
+                })));
+            }
+        }
+        None
+    }
+
+    fn exp_unary(&mut self) -> MaybeASTNode {
+        let current_token = self.current();
+        if self.accept(Token::NOT) || self.accept(Token::HASHTAG) || self.accept(Token::SUBTRACT) {
+            let exp = self.exp_exponent().or_else(|| {
                 self.report_expected_error("<exp>");
                 return None;
             })?;
 
-            return Some(ASTNode::UnaryOp {
-                unary_operator: Box::new(ASTNode::Token(current_terminal)),
+            return Some(ASTNode::Expression(Box::new(ASTNode::UnaryOp {
+                unary_operator: Box::new(ASTNode::Token(current_token)),
                 right: Box::new(exp),
-            });
+            })));
+        }
+
+        if let Some(tree) = self.exp_exponent() {
+            return Some(tree);
+        }
+
+        None
+    }
+
+    fn exp_exponent(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.exp_primary() {
+            if self.accept(Token::XOR) {
+                let exp = self.exp_primary().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+
+                return Some(ASTNode::Expression(Box::new(ASTNode::BinaryOp {
+                    left: Box::new(tree),
+                    binary_operator: Box::new(ASTNode::Token(Token::XOR)),
+                    right: Box::new(exp),
+                })));
+            }
         }
         None
     }
 
-    // parse an expression.
-    fn exp(&mut self) -> Option<ASTNode> {
+    fn exp_primary(&mut self) -> MaybeASTNode {
         let found_terminal = match self.current() {
             Token::NUMBER(_) => true,
             Token::STRING(_) => true,
@@ -542,10 +723,38 @@ impl Parser {
         };
 
         if found_terminal {
+            let current_token = self.current();
             self.advance();
-            return Some(ASTNode::Expression(Box::new(ASTNode::Token(
-                self.current(),
-            ))));
+            return Some(ASTNode::Expression(Box::new(ASTNode::Token(current_token))));
+        }
+
+        if self.accept(Token::LEFT_PAREN) {
+            let exp = self.exp_or().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+            self.expect(Token::RIGHT_PAREN);
+            return Some(ASTNode::Expression(Box::new(exp)));
+        }
+
+        None
+    }
+
+    // parse an expression.
+    fn exp(&mut self) -> Option<ASTNode> {
+        self.exp_or();
+
+        let found_terminal = match self.current() {
+            Token::NUMBER(_) => true,
+            Token::STRING(_) => true,
+            Token::NIL | Token::FALSE | Token::TRUE | Token::DOTS => true,
+            _ => false,
+        };
+
+        if found_terminal {
+            let current_token = self.current();
+            self.advance();
+            return Some(ASTNode::Expression(Box::new(ASTNode::Token(current_token))));
         }
 
         if let Some(tree) = self.function() {
@@ -557,18 +766,6 @@ impl Parser {
         }
 
         if let Some(tree) = self.tableconstructor() {
-            return Some(ASTNode::Expression(Box::new(tree)));
-        }
-
-        // check if the next operator is a binary operator.
-        self.advance();
-        if let Some(tree) = self.binop() {
-            return Some(ASTNode::Expression(Box::new(tree)));
-        } else {
-            self.backtrack();
-        }
-
-        if let Some(tree) = self.unop() {
             return Some(ASTNode::Expression(Box::new(tree)));
         }
 
@@ -590,9 +787,30 @@ impl Parser {
             return Some(ASTNode::Statement(Box::new(ASTNode::Do(Box::new(block)))));
         }
 
+        if self.accept(Token::FUNCTION) {
+            let exp = self.exp_or().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            return Some(ASTNode::Expression(Box::new(exp)));
+        }
+
         if self.accept(Token::LOCAL) {
             if self.accept(Token::FUNCTION) {
                 return None;
+            }
+
+            if let Some(name_list) = self.namelist() {
+                let exp_list = if self.accept(Token::ASSIGN) {
+                    self.explist1()
+                } else {
+                    None
+                };
+                return Some(ASTNode::Statement(Box::new(ASTNode::LocalVariable {
+                    name_list: Box::new(name_list),
+                    expression_list: exp_list.map(Box::new),
+                })));
             }
         }
 
@@ -618,7 +836,10 @@ impl Parser {
     }
 
     fn block(&mut self) -> MaybeASTNode {
-        self.chunk()
+        if let Some(tree) = self.chunk() {
+            return Some(ASTNode::Block(Box::new(tree)));
+        }
+        None
     }
 
     fn chunk(&mut self) -> MaybeASTNode {

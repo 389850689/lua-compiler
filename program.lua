@@ -1,8 +1,1 @@
--- local x = 10
-do
-	return 1
-end
-
-do
-	return 1
-end
+function 1 + 2 * 3
