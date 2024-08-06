@@ -121,12 +121,12 @@ pub enum ASTNode {
         parameter_list: Option<Box<ASTNode>>,
         block: Box<ASTNode>,
     },
-    ParameterList(Box<ASTNode>),
     // This is just one of the possible productions.
     ParameterListA {
         name_list: Box<ASTNode>,
-        variadic: Box<ASTNode>,
+        variadic: bool,
     },
+    ParameterListB(Box<ASTNode>),
     TableConstructor(Option<Box<ASTNode>>),
     FieldList {
         field: Box<ASTNode>,
@@ -251,7 +251,6 @@ impl Parser {
     }
 
     fn name(&mut self) -> MaybeASTNode {
-        println!("{}", std::backtrace::Backtrace::force_capture());
         if let Token::NAME(s) = self.current() {
             self.advance();
             return Some(ASTNode::Name(s));
@@ -494,6 +493,30 @@ impl Parser {
         None
     }
 
+    fn parlist1(&mut self) -> MaybeASTNode {
+        if let Some(tree) = self.namelist() {
+            let variadic = if self.accept(Token::COMMA) {
+                self.expect(Token::DOTS);
+                true
+            } else {
+                false
+            };
+
+            return Some(ASTNode::ParameterListA {
+                name_list: Box::new(tree),
+                variadic,
+            });
+        }
+
+        if self.accept(Token::DOTS) {
+            return Some(ASTNode::ParameterListB(Box::new(ASTNode::Token(
+                Token::DOTS,
+            ))));
+        }
+
+        None
+    }
+
     fn funcbody(&mut self) -> MaybeASTNode {
         None
     }
@@ -574,7 +597,6 @@ impl Parser {
 
     fn exp_or(&mut self) -> MaybeASTNode {
         if let Some(tree) = self.exp_and() {
-            println!("test");
             if self.accept(Token::OR) {
                 let exp = self.exp_and().or_else(|| {
                     self.report_expected_error("<exp>");
@@ -595,7 +617,6 @@ impl Parser {
 
     fn exp_and(&mut self) -> MaybeASTNode {
         if let Some(tree) = self.exp_eqaulity() {
-            println!("test");
             if self.accept(Token::AND) {
                 let exp = self.exp_eqaulity().or_else(|| {
                     self.report_expected_error("<exp>");
@@ -777,24 +798,11 @@ impl Parser {
 
     // parse an expression.
     fn exp(&mut self) -> Option<ASTNode> {
-        // let found_terminal = match self.current() {
-        //     Token::NUMBER(_) => true,
-        //     Token::STRING(_) => true,
-        //     Token::NIL | Token::FALSE | Token::TRUE | Token::DOTS => true,
-        //     _ => false,
-        // };
-        //
-        // if found_terminal {
-        //     let current_token = self.current();
-        //     self.advance();
-        //     return Some(ASTNode::Expression(Box::new(ASTNode::Token(current_token))));
-        // }
-
-        if let Some(tree) = self.function() {
+        if let Some(tree) = self.exp_or() {
             return Some(ASTNode::Expression(Box::new(tree)));
         }
 
-        if let Some(tree) = self.prefixexp() {
+        if let Some(tree) = self.function() {
             return Some(ASTNode::Expression(Box::new(tree)));
         }
 
@@ -802,9 +810,9 @@ impl Parser {
             return Some(ASTNode::Expression(Box::new(tree)));
         }
 
-        // if let Some(tree) = self.exp_or() {
-        //     return Some(ASTNode::Expression(Box::new(tree)));
-        // }
+        if let Some(tree) = self.prefixexp() {
+            return Some(ASTNode::Expression(Box::new(tree)));
+        }
 
         None
     }
