@@ -518,6 +518,20 @@ impl Parser {
     }
 
     fn funcbody(&mut self) -> MaybeASTNode {
+        if self.accept(Token::LEFT_PAREN) {
+            let parameter_list = self.parlist1();
+            self.expect(Token::RIGHT_PAREN);
+
+            let block = self.block().or_else(|| {
+                self.report_expected_error("<block>");
+                return None;
+            })?;
+
+            return Some(ASTNode::FunctionBody {
+                parameter_list: parameter_list.map(Box::new),
+                block: Box::new(block),
+            });
+        }
         None
     }
 
