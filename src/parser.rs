@@ -38,7 +38,7 @@ pub enum ASTNode {
         // this would be the if condition.
         expression: Box<ASTNode>,
         block: Box<ASTNode>,
-        elseif: Vec<ASTNode>,
+        elseif: Vec<(ASTNode, ASTNode)>,
         then_else: Option<Box<ASTNode>>,
     },
     ForNumeric {
@@ -274,6 +274,58 @@ impl Parser {
             return Some(ASTNode::NameList {
                 name: Box::new(name),
                 tail_list: name_list,
+            });
+        }
+
+        None
+    }
+
+    fn varlist(&mut self) -> MaybeASTNode {
+        if let Some(var) = self.var() {
+            let mut var_list = Vec::new();
+
+            while self.accept(Token::COMMA) {
+                let var = self.var().or_else(|| {
+                    self.report_expected_error("<var>");
+                    return None;
+                })?;
+                var_list.push(var);
+            }
+
+            return Some(ASTNode::VariableList {
+                variable: Box::new(var),
+                tail_list: var_list,
+            });
+        }
+
+        None
+    }
+
+    fn funcname(&mut self) -> MaybeASTNode {
+        if let Some(name) = self.name() {
+            let mut name_list = Vec::new();
+
+            while self.accept(Token::DOT) {
+                let name = self.name().or_else(|| {
+                    self.report_expected_error("<name>");
+                    return None;
+                })?;
+                name_list.push(name);
+            }
+
+            let col_name = if self.accept(Token::COLON) {
+                Some(self.name().or_else(|| {
+                    self.report_expected_error("<name>");
+                    return None;
+                })?)
+            } else {
+                None
+            };
+
+            return Some(ASTNode::FunctionName {
+                name: Box::new(name),
+                members: name_list,
+                colon: col_name.map(Box::new),
             });
         }
 
@@ -561,66 +613,6 @@ impl Parser {
         None
     }
 
-    // fn binop(&mut self) -> MaybeASTNode {
-    //     // we now know it's a binary operator.
-    //     if self.is_currently_binop() {
-    //         let current_terminal = self.current();
-    //
-    //         // go back a token to get the first argument.
-    //         self.backtrack();
-    //
-    //         let exp1 = self.exp().or_else(|| {
-    //             self.report_expected_error("<exp>");
-    //             return None;
-    //         })?;
-    //
-    //         // advance twice to get to the right hand side operand.
-    //         self.advance();
-    //         self.advance();
-    //
-    //         let exp2 = self.exp().or_else(|| {
-    //             self.report_expected_error("<exp>");
-    //             return None;
-    //         })?;
-    //
-    //         return Some(ASTNode::BinaryOp {
-    //             left: Box::new(exp1),
-    //             binary_operator: Box::new(ASTNode::BinaryOperator(Box::new(ASTNode::Token(
-    //                 current_terminal,
-    //             )))),
-    //             right: Box::new(exp2),
-    //         });
-    //     }
-    //     None
-    // }
-    //
-    // fn unop(&mut self) -> MaybeASTNode {
-    //     let found_terminal = match self.current() {
-    //         Token::SUBTRACT | Token::NOT | Token::HASHTAG => true,
-    //         _ => false,
-    //     };
-    //
-    //     // we now know it's a unary operator.
-    //     if found_terminal {
-    //         let current_terminal = self.current();
-    //
-    //         self.advance();
-    //
-    //         let exp = self.exp().or_else(|| {
-    //             self.report_expected_error("<exp>");
-    //             return None;
-    //         })?;
-    //
-    //         return Some(ASTNode::UnaryOp {
-    //             unary_operator: Box::new(ASTNode::UnaryOperator(Box::new(ASTNode::Token(
-    //                 current_terminal,
-    //             )))),
-    //             right: Box::new(exp),
-    //         });
-    //     }
-    //     None
-    // }
-
     fn exp_or(&mut self) -> MaybeASTNode {
         if let Some(tree) = self.exp_and() {
             if self.accept(Token::OR) {
@@ -858,13 +850,116 @@ impl Parser {
             return Some(ASTNode::Statement(Box::new(ASTNode::Do(Box::new(block)))));
         }
 
-        if self.accept(Token::FUNCTION) {
-            let exp = self.exp_or().or_else(|| {
-                self.report_expected_error("DEBUG <exp>");
+        // varlist1 `=´ explist1.
+        if let Some(var_list) = self.varlist() {
+            self.expect(Token::ASSIGN);
+
+            let exp_list = self.explist1().or_else(|| {
+                self.report_expected_error("<explist1>");
                 return None;
             })?;
 
-            return Some(ASTNode::Expression(Box::new(exp)));
+            return Some(ASTNode::Statement(Box::new(ASTNode::LValueAssign {
+                var_list: Box::new(var_list),
+                expression_list: Box::new(exp_list),
+            })));
+        }
+
+        if let Some(function_call) = self.functioncall() {
+            return Some(ASTNode::Statement(Box::new(function_call)));
+        }
+
+        if self.accept(Token::WHILE) {
+            let exp = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+            self.expect(Token::DO);
+            let block = match self.block() {
+                Some(block) => block,
+                None => {
+                    self.report_expected_error("<block>");
+                    return None;
+                }
+            };
+
+            self.expect(Token::END);
+
+            return Some(ASTNode::Statement(Box::new(ASTNode::While {
+                expression: Box::new(exp),
+                do_block: Box::new(block),
+            })));
+        }
+
+        if self.accept(Token::REPEAT) {
+            let block = self.block().or_else(|| {
+                self.report_expected_error("<block>");
+                return None;
+            })?;
+
+            self.expect(Token::UNTIL);
+
+            let exp = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            self.expect(Token::END);
+
+            return Some(ASTNode::Statement(Box::new(ASTNode::Repeat {
+                block: Box::new(block),
+                expression: Box::new(exp),
+            })));
+        }
+
+        if self.accept(Token::IF) {
+            let exp = self.exp().or_else(|| {
+                self.report_expected_error("<exp>");
+                return None;
+            })?;
+
+            self.expect(Token::THEN);
+
+            let block = self.block().or_else(|| {
+                self.report_expected_error("<block>");
+                return None;
+            })?;
+
+            let mut else_ifs = Vec::new();
+
+            while self.accept(Token::ELSEIF) {
+                let exp = self.exp().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+
+                self.expect(Token::THEN);
+
+                let block = self.block().or_else(|| {
+                    self.report_expected_error("<block>");
+                    return None;
+                })?;
+
+                else_ifs.push((exp, block));
+            }
+
+            let else_block = if self.accept(Token::ELSE) {
+                Some(self.block().or_else(|| {
+                    self.report_expected_error("<block>");
+                    return None;
+                })?)
+            } else {
+                None
+            };
+
+            self.expect(Token::END);
+
+            return Some(ASTNode::Statement(Box::new(ASTNode::If {
+                expression: (),
+                block: (),
+                elseif: (),
+                then_else: (),
+            })));
         }
 
         if self.accept(Token::LOCAL) {
