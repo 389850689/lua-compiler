@@ -1,1 +1,1 @@
-function 1 + 2 * 3
+function 1 + 1 and 1
