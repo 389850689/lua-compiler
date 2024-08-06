@@ -1,1 +1,1 @@
-function 1 + 1 and 1
+local test = 1 + 1

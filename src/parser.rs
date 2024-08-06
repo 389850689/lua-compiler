@@ -82,8 +82,14 @@ pub enum ASTNode {
     },
     Variable(Box<ASTNode>),
     PrefixExpression(Box<ASTNode>),
-    PrefixExpressionBrackets(Box<ASTNode>),
-    PrefixExpressionDot(Box<ASTNode>),
+    PrefixExpressionBracketsExpression {
+        prefix_expression: Box<ASTNode>,
+        expression: Box<ASTNode>,
+    },
+    PrefixExpressionDotName {
+        prefix_expression: Box<ASTNode>,
+        name: Box<ASTNode>,
+    },
     PrefixExpressionArgs {
         prefix_expression: Box<ASTNode>,
         arguments: Box<ASTNode>,
@@ -428,6 +434,39 @@ impl Parser {
         if let Some(tree) = self.name() {
             return Some(ASTNode::Variable(Box::new(tree)));
         }
+
+        if let Some(tree) = self.prefixexp() {
+            if self.accept(Token::LEFT_BRACKET) {
+                let exp = self.exp().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+
+                self.expect(Token::RIGHT_BRACKET);
+
+                return Some(ASTNode::Variable(Box::new(
+                    ASTNode::PrefixExpressionBracketsExpression {
+                        prefix_expression: Box::new(tree),
+                        expression: Box::new(exp),
+                    },
+                )));
+            }
+
+            if self.accept(Token::DOT) {
+                let name = self.name().or_else(|| {
+                    self.report_expected_error("<name>");
+                    return None;
+                })?;
+
+                return Some(ASTNode::Variable(Box::new(
+                    ASTNode::PrefixExpressionDotName {
+                        prefix_expression: Box::new(tree),
+                        name: Box::new(name),
+                    },
+                )));
+            }
+        }
+
         None
     }
 
@@ -713,6 +752,7 @@ impl Parser {
         let found_terminal = match self.current() {
             Token::NUMBER(_) => true,
             Token::STRING(_) => true,
+            Token::NAME(_) => true,
             Token::NIL | Token::FALSE | Token::TRUE | Token::DOTS => true,
             _ => false,
         };
