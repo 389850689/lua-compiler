@@ -143,6 +143,7 @@ pub enum ASTNode {
         expression: Box<ASTNode>,
     },
     Fieldsep(Box<ASTNode>),
+    Args(Box<ASTNode>),
     LastStatement(Box<ASTNode>),
     // BinaryOperator(Box<ASTNode>),
     // UnaryOperator(Box<ASTNode>),
@@ -374,10 +375,21 @@ impl Parser {
             // doesn't really matter if this returns anything.
             let exp_list = self.explist1();
             self.expect(Token::RIGHT_PAREN);
-            return Some(ASTNode::ArgsParamList(match exp_list {
-                Some(t) => Some(Box::new(t)),
-                None => None,
-            }));
+            return Some(ASTNode::Args(Box::new(ASTNode::ArgsParamList(
+                match exp_list {
+                    Some(t) => Some(Box::new(t)),
+                    None => None,
+                },
+            ))));
+        }
+
+        if let Some(table_constructor) = self.tableconstructor() {
+            return Some(ASTNode::Args(Box::new(table_constructor)));
+        }
+
+        if let Token::STRING(s) = self.current() {
+            self.advance();
+            return Some(ASTNode::Args(Box::new(ASTNode::Token(Token::STRING(s)))));
         }
 
         None
