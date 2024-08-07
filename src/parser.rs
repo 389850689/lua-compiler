@@ -854,25 +854,6 @@ impl Parser {
             return Some(ASTNode::Statement(Box::new(ASTNode::Do(Box::new(block)))));
         }
 
-        // varlist1 `=´ explist1.
-        if let Some(var_list) = self.varlist() {
-            self.expect(Token::ASSIGN);
-
-            let exp_list = self.explist1().or_else(|| {
-                self.report_expected_error("<explist1>");
-                return None;
-            })?;
-
-            return Some(ASTNode::Statement(Box::new(ASTNode::LValueAssign {
-                var_list: Box::new(var_list),
-                expression_list: Box::new(exp_list),
-            })));
-        }
-
-        if let Some(function_call) = self.functioncall() {
-            return Some(ASTNode::Statement(Box::new(function_call)));
-        }
-
         if self.accept(Token::WHILE) {
             let exp = self.exp().or_else(|| {
                 self.report_expected_error("<exp>");
@@ -1079,6 +1060,25 @@ impl Parser {
                     expression_list: exp_list.map(Box::new),
                 })));
             }
+
+            if let Some(function_call) = self.functioncall() {
+                return Some(ASTNode::Statement(Box::new(function_call)));
+            }
+
+            // varlist1 `=´ explist1.
+            if let Some(var_list) = self.varlist() {
+                self.expect(Token::ASSIGN);
+
+                let exp_list = self.explist1().or_else(|| {
+                    self.report_expected_error("<explist1>");
+                    return None;
+                })?;
+
+                return Some(ASTNode::Statement(Box::new(ASTNode::LValueAssign {
+                    var_list: Box::new(var_list),
+                    expression_list: Box::new(exp_list),
+                })));
+            }
         }
 
         None
@@ -1137,6 +1137,8 @@ impl Parser {
 
     pub fn parse(&mut self) -> MaybeASTNode {
         let chunk = self.chunk();
+
+        println!("{:#?}", chunk);
 
         if self.errored {
             None
