@@ -60,9 +60,13 @@ pub enum ASTNode {
     Function {
         function_body: Box<ASTNode>,
     },
+    FunctionStatement {
+        func_name: Box<ASTNode>,
+        function_body: Box<ASTNode>,
+    },
     LocalFunction {
         // NOTE: this is not a funcname, rather a NAME.
-        function_name: Box<ASTNode>,
+        name: Box<ASTNode>,
         function_body: Box<ASTNode>,
     },
     LocalVariable {
@@ -1030,9 +1034,38 @@ impl Parser {
             }
         }
 
+        if self.accept(Token::FUNCTION) {
+            let func_name = self.funcname().or_else(|| {
+                self.report_expected_error("<funcname>");
+                return None;
+            })?;
+
+            let func_body = self.funcbody().or_else(|| {
+                self.report_expected_error("<funcbody>");
+                return None;
+            })?;
+
+            return Some(ASTNode::Statement(Box::new(ASTNode::FunctionStatement {
+                func_name: Box::new(func_name),
+                function_body: Box::new(func_body),
+            })));
+        }
+
         if self.accept(Token::LOCAL) {
             if self.accept(Token::FUNCTION) {
-                return None;
+                let name = self.name().or_else(|| {
+                    self.report_expected_error("<name>");
+                    return None;
+                })?;
+                let func_body = self.funcbody().or_else(|| {
+                    self.report_expected_error("<funcbody>");
+                    return None;
+                })?;
+
+                return Some(ASTNode::Statement(Box::new(ASTNode::LocalFunction {
+                    name: Box::new(name),
+                    function_body: Box::new(func_body),
+                })));
             }
 
             if let Some(name_list) = self.namelist() {
