@@ -955,11 +955,79 @@ impl Parser {
             self.expect(Token::END);
 
             return Some(ASTNode::Statement(Box::new(ASTNode::If {
-                expression: (),
-                block: (),
-                elseif: (),
-                then_else: (),
+                expression: Box::new(exp),
+                block: Box::new(block),
+                elseif: else_ifs,
+                then_else: else_block.map(Box::new),
             })));
+        }
+
+        if self.accept(Token::FOR) {
+            // numeric for.
+            if let Some(name) = self.name() {
+                self.expect(Token::ASSIGN);
+                let exp = self.exp().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+                self.expect(Token::COMMA);
+                let exp2 = self.exp().or_else(|| {
+                    self.report_expected_error("<exp>");
+                    return None;
+                })?;
+
+                let exp3 = if self.accept(Token::COMMA) {
+                    Some(self.exp().or_else(|| {
+                        self.report_expected_error("<exp>");
+                        return None;
+                    })?)
+                } else {
+                    None
+                };
+
+                self.expect(Token::DO);
+
+                let block = self.block().or_else(|| {
+                    self.report_expected_error("<block>");
+                    return None;
+                })?;
+
+                self.expect(Token::END);
+
+                return Some(ASTNode::Statement(Box::new(ASTNode::ForNumeric {
+                    name: Box::new(name),
+                    from_expression: Box::new(exp),
+                    to_expression: Box::new(exp2),
+                    step_expression: exp3.map(Box::new),
+                    do_block: Box::new(block),
+                })));
+            }
+
+            // generic for.
+            if let Some(name_list) = self.namelist() {
+                self.expect(Token::IN);
+
+                let exp_list = self.explist1().or_else(|| {
+                    self.report_expected_error("<explist1>");
+                    return None;
+                })?;
+
+                self.expect(Token::DO);
+
+                let block = self.block().or_else(|| {
+                    self.report_expected_error("<block>");
+                    return None;
+                })?;
+
+                self.expect(Token::END);
+
+                // return Some(ASTNode::Statement(Box::new()));
+                return Some(ASTNode::Statement(Box::new(ASTNode::ForGeneric {
+                    name_list: Box::new(name_list),
+                    expression_list_1: Box::new(exp_list),
+                    do_block: Box::new(block),
+                })));
+            }
         }
 
         if self.accept(Token::LOCAL) {
